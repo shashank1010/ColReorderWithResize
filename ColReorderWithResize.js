@@ -1064,14 +1064,28 @@ $.extend( ColReorder.prototype, {
 	{
 		var that = this;
 		
+		var dt = this.s.dt
 		var scrollXEnabled = this.s.dt.oInit.sScrollX !== undefined;
 
+		// Using the Table components provided by Data Table
+		var $scrollHeadTableWrapper = $(dt.nTableWrapper)
+		var tableWidth = $scrollHeadTableWrapper.width()
+		var $scrollHead = $(dt.nScrollHead)
+		var $scrollHeadTable = $scrollHead.find('.dataTable')
+		var $scrollBody = $(dt.nScrollBody)
+		var $scrollBodyTable = $(dt.nTable)
+		var $scrollFoot = $(dt.nScrollFoot)
+
+		// Set overflow Table Wrap to be auto for a consistent scrolling and resizing experience
+		$scrollHeadTableWrapper.css('overflow', "auto")
+
+		// Table Layout fixed required for resizing table columns.
+		// Can be longer than the resized width rendering the column wider than expected
+		$scrollHeadTableWrapper.find('.dataTable').css('tableLayout', "fixed")
+		
 		// Keep the current table's width (used in case sScrollX is enabled to resize the whole table, giving an Excel-like behavior)
-		var $scrollHead = $('div.dataTables_scrollHead');
-		var $scrollHeadTableWrapper = $scrollHead.find(this.s.dt.nTableWrapper);
 		if(this.table_size < 0 && scrollXEnabled && $scrollHeadTableWrapper.length) {
-			if($scrollHeadTableWrapper.length > 0)
-				this.table_size = $($scrollHeadTableWrapper[0].childNodes[0].childNodes[0]).width();
+			this.table_size = $($scrollHeadTableWrapper[0].childNodes[0].childNodes[0]).width();
 		}
 
 		// Handle column resizing.	
@@ -1080,11 +1094,17 @@ $.extend( ColReorder.prototype, {
 			var $nThNext = $($nTh.next('th'));
 
 			var nThInnerWidth = $nTh.first('span').innerWidth();
+			var nThMinWidth = parseInt($nTh.css('minWidth'))
+			
 			var nThNextInnerWidth = $nThNext.first('span').innerWidth();
+			var nThNextMinWidth = parseInt($nThNext.css('minWidth'))
 
 			var moveLength = e.pageX-this.s.mouse.startX; 
-            var nThWidth = parseInt(this.s.mouse.startWidth + moveLength);
-            var nThNextWidth = parseInt(this.s.mouse.nextStartWidth - moveLength);
+			var nThWidth = parseInt(this.s.mouse.startWidth + moveLength);
+			var nThNextWidth = parseInt(this.s.mouse.nextStartWidth - moveLength);
+			
+			nThWidth = nThMinWidth > nThWidth ? nThMinWidth : nThWidth
+			nThNextWidth = nThNextMinWidth > nThNextWidth ? nThNextMinWidth : nThNextWidth
 
             if(nThWidth != $nTh.width()) {
 				if(moveLength < 0) { 
@@ -1121,52 +1141,61 @@ $.extend( ColReorder.prototype, {
 			}
 		
             // First determine if this plugin is being used along with the smart scroller.
-			var $scrollBody = $('div.dataTables_scrollBody'); 
             if($scrollBody.length) {
-                // If so, when resizing the header, also resize the table's body (when enabling the Scroller, the table's header and
-                // body are split into different tables, so the column resizing doesn't work anymore).
-				if($scrollBody.length) {
-					// Since some columns might have been hidden, find the correct one to resize in the table's body
-					var currentColumnIndex;
-					var visibleColumnIndex = -1;
-					for(currentColumnIndex=-1; currentColumnIndex < this.s.dt.aoColumns.length-1 && currentColumnIndex != colResized; currentColumnIndex++) {
-						if(this.s.dt.aoColumns[currentColumnIndex+1].bVisible) {
-							visibleColumnIndex++;
-						}
+				// If so, when resizing the header, also resize the table's body (when enabling the Scroller, the table's header and
+				// body are split into different tables, so the column resizing doesn't work anymore).
+				
+				// Since some columns might have been hidden, find the correct one to resize in the table's body
+				var currentColumnIndex;
+				var visibleColumnIndex = -1;
+				for(currentColumnIndex=-1; currentColumnIndex < this.s.dt.aoColumns.length-1 && currentColumnIndex != colResized; currentColumnIndex++) {
+					if(this.s.dt.aoColumns[currentColumnIndex+1].bVisible) {
+						visibleColumnIndex++;
 					}
-					visibleColumnIndex++;
+				}
+				visibleColumnIndex++;
 
-					// Get the first row in the scrollBody thead.
-					var $scrollBodyTheadTr = $scrollBody.find('thead').first('tr');
-					var $scrollBodyNTh = $scrollBodyTheadTr.find('th:nth-child('+visibleColumnIndex+')');
-					var $scrollBodyNThNext = $scrollBodyTheadTr.find('th:nth-child('+(visibleColumnIndex+1)+')');
+				// Get the first row in the scrollBody thead.
+				var $scrollBodyTheadTr = $scrollBody.find('thead').first('tr');
+				var $scrollBodyNTh = $scrollBodyTheadTr.find('th:nth-child('+visibleColumnIndex+')');
+				var $scrollBodyNThNext = $scrollBodyTheadTr.find('th:nth-child('+(visibleColumnIndex+1)+')');
 
-					// Get the first row in the scrollBody tbody.
-					var $scrollBodyTbodyTr = $scrollBody.find('tbody').first('tr');
-					var $scrollBodyNTd = $scrollBodyTbodyTr.find('td:nth-child('+visibleColumnIndex+')');
-					var $scrollBodyNTdNext = $scrollBodyTbodyTr.find('td:nth-child('+(visibleColumnIndex+1)+')');
+				// Get the first row in the scrollBody tbody.
+				var $scrollBodyTbodyTr = $scrollBody.find('tbody').first('tr');
+				var $scrollBodyNTd = $scrollBodyTbodyTr.find('td:nth-child('+visibleColumnIndex+')');
+				var $scrollBodyNTdNext = $scrollBodyTbodyTr.find('td:nth-child('+(visibleColumnIndex+1)+')');
 
-					// Resize the table too (if sScrollX is enabled).
-					if(scrollXEnabled) {
-						// Resize the selected column header in the scrollBody.
-						$scrollBodyNTh.width(nThWidth);
-						$scrollBodyNTd.width(nThWidth);
+				// Resize the table too (if sScrollX is enabled).
+				if(scrollXEnabled) {
+					// Resize the selected column header in the scrollBody.
+					$scrollBodyNTh.width(nThWidth);
+					$scrollBodyNTd.width(nThWidth);
 
-						$scrollBody.width(this.table_size + moveLength);
-						$($scrollBody.closest('.dataTables_scroll').find('.dataTables_scrollHead table')[0]).width(this.table_size + moveLength);
+					if(tableWidth < this.table_size + moveLength){
+						tableWidth = this.table_size + moveLength
 					}
-					// Resize the columns of the scrollBody.
-					else {
-						if(moveLength) {
-							$scrollBodyNTdNext.width(nThNextWidth);
-							$scrollBodyNThNext.width(nThNextWidth);
-							$nThNext.width($scrollBodyNThNext.width());
-						}
-						// Resize the selected column header in the scrollBody.
-						$scrollBodyNTd.width(nThWidth);
-						$scrollBodyNTh.width(nThWidth);
-						$nTh.width($scrollBodyNTh.width());
+
+					// Set Table width for Head Table and Body Table
+					$scrollBodyTable.width(tableWidth);
+					$scrollHeadTable.width(tableWidth);
+
+					// Set  Head, Body, Footer Wrappers width same as Body Table width
+					var renderedWidth = $scrollBodyTable.width()
+					$scrollBody.width(renderedWidth);
+					$scrollHead.width(renderedWidth);
+					$scrollFoot.width(renderedWidth);
+				}
+				// Resize the columns of the scrollBody.
+				else {
+					if(moveLength) {
+						$scrollBodyNTdNext.width(nThNextWidth);
+						$scrollBodyNThNext.width(nThNextWidth);
+						$nThNext.width($scrollBodyNThNext.width());
 					}
+					// Resize the selected column header in the scrollBody.
+					$scrollBodyNTd.width(nThWidth);
+					$scrollBodyNTh.width(nThWidth);
+					$nTh.width($scrollBodyNTh.width());
 				}
 			}			  
 		    return;
@@ -1283,16 +1312,23 @@ $.extend( ColReorder.prototype, {
 
             var nTh = this.s.mouse.resizeElem;
             var nThInnerWidth = $(nTh).find('span').first().width();
-            var nThNext = $(nTh).next('th');
-            var nThNextInnerWidth = $(nThNext).find('span').first().width();
+			var nThNext = $(nTh).next('th');
+			var nThNextInnerWidth = $(nThNext).find('span').first().width();
+
 			//Save the new resized column's width
             if($(nTh).innerWidth() > nThInnerWidth) {
-			    this.s.dt.aoColumns[colResized].sWidth = $(nTh).width() + "px";
-			    this.s.dt.aoColumns[colResized+1].sWidth = $(nThNext).width() + "px";
+				this.s.dt.aoColumns[colResized].sWidth = $(nTh).width() + "px";
+
+				if(nThNext.length){
+					this.s.dt.aoColumns[colResized+1].sWidth = $(nThNext).width() + "px";
+				}
             }
             else {
-			    this.s.dt.aoColumns[colResized].sWidth = nThInnerWidth + "px";
-			    this.s.dt.aoColumns[colResized+1].sWidth = nThNextInnerWidth + "px";
+				this.s.dt.aoColumns[colResized].sWidth = nThInnerWidth + "px";
+
+				if(nThNext.length){
+					this.s.dt.aoColumns[colResized+1].sWidth = nThNextInnerWidth + "px";
+				}
             }
 			
 			//If other columns might have changed their size, save their size too
